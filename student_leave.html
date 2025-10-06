@@ -1,0 +1,54 @@
+<!-- public/student_leave.html -->
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Leave Application</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="bg-light">
+  <div class="container mt-5">
+    <div class="card shadow" style="max-width: 500px; margin: auto;">
+      <div class="card-header bg-primary text-white text-center">
+        <h4>Apply for Leave</h4>
+      </div>
+      <div class="card-body">
+        <form action="/submit-leave" method="POST">
+          <div class="mb-3">
+            <label class="form-label">Name:</label>
+            <input type="text" name="name" class="form-control" required>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Student Mobile No.:</label>
+            <input type="text" name="studentMobile" class="form-control" required>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Parent Mobile No.:</label>
+            <input type="text" name="parentMobile" class="form-control" required>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">From Date:</label>
+            <input type="date" name="from" class="form-control" required>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">To Date:</label>
+            <input type="date" name="to" class="form-control" required>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Reason:</label>
+            <textarea name="reason" class="form-control" required></textarea>
+          </div>
+
+          <div class="text-center">
+            <input type="submit" value="Submit Leave" class="btn btn-success">
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

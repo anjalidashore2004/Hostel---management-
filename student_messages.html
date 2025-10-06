@@ -1,0 +1,59 @@
+<!-- public/student_messages.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Messages from Warden - Student View</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+<style>
+  body{ background:#f1f5f9; font-family:Inter,Segoe UI,Arial; padding:20px }
+  .box { max-width:760px; margin:0 auto; background:#fff; padding:18px; border-radius:10px; }
+  .msg { padding:12px; border-radius:8px; margin-bottom:12px; background:#eef7ff; }
+  .meta { font-size:12px; color:#666; margin-top:6px }
+  img { max-width:100%; border-radius:8px; display:block; }
+  audio { width:100%; }
+</style>
+</head>
+<body>
+  <div class="box">
+    <h4>📩 Messages from Warden</h4>
+    <div id="msgs"></div>
+  </div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+  const socket = io();
+  const msgsEl = document.getElementById('msgs');
+
+  socket.emit('getMessages');
+  socket.on('messages', list => { render(list); });
+  socket.on('messageBroadcast', m => { append(m); });
+
+  function render(list) {
+    msgsEl.innerHTML = '';
+    list.forEach(m => append(m));
+  }
+
+  function append(m) {
+    const d = document.createElement('div');
+    d.className = 'msg';
+    if (m.type === 'text') {
+      d.innerHTML = `<div>${escapeHtml(m.text)}</div><div class="meta">${new Date(m.time).toLocaleString()}</div>`;
+    } else if (m.type === 'image') {
+      d.innerHTML = `<div><img src="${m.url}" alt="image"></div><div class="meta">${new Date(m.time).toLocaleString()}</div>`;
+    } else if (m.type === 'audio') {
+      d.innerHTML = `<div><audio controls src="${m.url}"></audio></div><div class="meta">${new Date(m.time).toLocaleString()}</div>`;
+    } else if (m.type === 'file') {
+      d.innerHTML = `<div><a href="${m.url}" download>${escapeHtml(m.filename || 'file')}</a></div><div class="meta">${new Date(m.time).toLocaleString()}</div>`;
+    } else {
+      d.innerHTML = `<pre>${escapeHtml(JSON.stringify(m, null, 2))}</pre>`;
+    }
+    msgsEl.appendChild(d);
+    msgsEl.scrollTop = msgsEl.scrollHeight;
+  }
+
+  function escapeHtml(s){ if(!s) return ''; return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+</script>
+</body>
+</html>

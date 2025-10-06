@@ -1,0 +1,275 @@
+<!-- public/warden_message.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Warden — Live Chat</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+<style>
+  :root{ --primary:#0d6efd; --muted:#6c757d; --card:#ffffff; }
+  body { background:#f4f6fb; font-family:Inter,Segoe UI,Arial; padding:20px; }
+  .app { max-width:1100px; margin:0 auto; display:grid; grid-template-columns: 360px 1fr; gap:20px; }
+  .panel { background:var(--card); border-radius:12px; box-shadow:0 6px 18px rgba(13,110,253,0.06); overflow:hidden; }
+  .left { padding:12px; height:78vh; display:flex; flex-direction:column; }
+  .search { margin-bottom:8px; }
+  .convos { overflow:auto; flex:1; padding-right:6px; }
+  .conv { padding:10px; border-radius:8px; cursor:pointer; display:flex; gap:12px; align-items:center; }
+  .conv:hover { background:#f1f5ff; }
+  .avatar { width:44px; height:44px; border-radius:50%; background:#dee2e6; display:flex;align-items:center;justify-content:center;font-weight:bold;color:#333 }
+  .right { padding:16px; height:78vh; display:flex; flex-direction:column; }
+  .messages { flex:1; overflow:auto; padding:12px; background: linear-gradient(180deg,#fafbff, #f4f6fb); border-radius:8px; }
+  .msg { margin-bottom:12px; max-width:70%; padding:10px 12px; border-radius:10px; color:#111; }
+  .msg.warden { background: #e8f0ff; margin-left:auto; text-align:left; }
+  .msg.student { background: #fff; margin-right:auto; text-align:left; border:1px solid #eee; }
+  .meta { font-size:12px; color:var(--muted); margin-top:6px; }
+  .composer { margin-top:12px; display:flex; gap:8px; align-items:flex-end; }
+  .inputarea { flex:1; background:#fff; border-radius:10px; padding:10px; border:1px solid #ddd; display:flex; gap:8px; align-items:center; }
+  .inputarea textarea { width:100%; border:0; resize:none; outline:none; }
+  .tools button { margin-right:6px; }
+  .smallbtn { padding:8px 10px; border-radius:8px; border:0; background:#f3f4f6; cursor:pointer; }
+  .sendbtn { background:var(--primary); color:#fff; border:0; padding:10px 14px; border-radius:10px; }
+  .file-preview img { max-width:200px; border-radius:8px; display:block; margin-top:8px; }
+  .status { font-size:13px; color:green; margin-top:8px; }
+  @media(max-width:900px){ .app{grid-template-columns:1fr;} .left{display:none;} }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="panel left">
+    <div class="px-2">
+      <input id="search" class="form-control search" placeholder="Search rooms / students...">
+    </div>
+    <div class="convos" id="convos">
+      <div class="conv">
+        <div class="avatar">W</div>
+        <div>
+          <div style="font-weight:600">Warden</div>
+          <div style="font-size:13px;color:var(--muted)">Broadcast messages & media</div>
+        </div>
+      </div>
+      <!-- future conversation list if needed -->
+    </div>
+  </div>
+
+  <div class="panel right">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+      <div style="font-size:18px;font-weight:600">Warden Broadcast</div>
+      <div style="color:var(--muted)">Live chat • Everyone</div>
+    </div>
+
+    <div class="messages" id="messages"></div>
+
+    <div class="composer">
+      <div class="inputarea">
+        <textarea id="text" rows="2" placeholder="Type a message... (you can use emoji)"></textarea>
+      </div>
+
+      <div class="tools d-flex flex-column">
+        <div class="d-flex mb-2">
+          <label class="smallbtn" title="Image upload">
+            📷
+            <input id="imgUpload" type="file" accept="image/*" style="display:none">
+          </label>
+          <button id="cameraBtn" class="smallbtn" title="Open camera">📸</button>
+          <button id="recordBtn" class="smallbtn" title="Record voice">🎤</button>
+          <label class="smallbtn" title="Attach file">
+            📎
+            <input id="fileUpload" type="file" style="display:none">
+          </label>
+        </div>
+
+        <div style="display:flex;gap:8px;align-items:center;">
+          <button id="sendBtn" class="sendbtn">Send</button>
+        </div>
+
+        <div id="status" class="status"></div>
+      </div>
+    </div>
+
+    <!-- hidden canvas for camera snapshot -->
+    <video id="cameraPreview" autoplay playsinline style="display:none"></video>
+    <canvas id="cameraCanvas" style="display:none"></canvas>
+
+  </div>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+  const socket = io();
+
+  // initial load
+  socket.emit('getMessages');
+  socket.on('messages', msgs => { renderMessages(msgs); });
+  socket.on('messageBroadcast', msg => { pushMessage(msg); });
+
+  // UI elements
+  const messagesEl = document.getElementById('messages');
+  const textEl = document.getElementById('text');
+  const sendBtn = document.getElementById('sendBtn');
+  const statusEl = document.getElementById('status');
+  const imgUpload = document.getElementById('imgUpload');
+  const fileUpload = document.getElementById('fileUpload');
+
+  // helper to render list
+  function renderMessages(list) {
+    messagesEl.innerHTML = '';
+    list.forEach(m => pushMessage(m, false));
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+  }
+
+  function pushMessage(m, scroll=true) {
+    const div = document.createElement('div');
+    div.className = 'msg ' + (m.from === 'warden' ? 'warden' : 'student');
+    // content varies by type
+    if (m.type === 'text') {
+      div.innerHTML = `<div>${escapeHtml(m.text)}</div>
+        <div class="meta">${formatTime(m.time)} • ${escapeHtml(m.from)}</div>`;
+    } else if (m.type === 'image') {
+      div.innerHTML = `<div><img src="${m.url}" style="max-width:320px;border-radius:8px"></div>
+        <div class="meta">${formatTime(m.time)} • ${escapeHtml(m.from)}</div>`;
+    } else if (m.type === 'audio') {
+      div.innerHTML = `<div><audio controls src="${m.url}"></audio></div>
+        <div class="meta">${formatTime(m.time)} • ${escapeHtml(m.from)}</div>`;
+    } else if (m.type === 'file') {
+      div.innerHTML = `<div><a href="${m.url}" download target="_blank">${escapeHtml(m.filename || 'file')}</a></div>
+        <div class="meta">${formatTime(m.time)} • ${escapeHtml(m.from)}</div>`;
+    } else {
+      div.innerHTML = `<div>${escapeHtml(JSON.stringify(m))}</div><div class="meta">${formatTime(m.time)}</div>`;
+    }
+    messagesEl.appendChild(div);
+    if (scroll) messagesEl.scrollTop = messagesEl.scrollHeight;
+  }
+
+  // send text
+  sendBtn.addEventListener('click', async () => {
+    const txt = textEl.value.trim();
+    if (!txt) return;
+    const msg = { from: 'warden', type: 'text', text: txt };
+    socket.emit('newMessage', msg);
+    textEl.value = '';
+    status('Sent text');
+  });
+
+  // image upload
+  imgUpload.addEventListener('change', async (e) => {
+    const f = e.target.files[0];
+    if (!f) return;
+    status('Uploading image...');
+    const form = new FormData();
+    form.append('file', f);
+    const res = await fetch('/upload', { method: 'POST', body: form });
+    const json = await res.json();
+    if (json.success) {
+      socket.emit('newMessage', { from:'warden', type:'image', url: json.url, filename: json.filename });
+      status('Image sent');
+    } else status('Upload failed');
+    imgUpload.value = '';
+  });
+
+  // generic file upload
+  fileUpload.addEventListener('change', async (e) => {
+    const f = e.target.files[0];
+    if (!f) return;
+    status('Uploading file...');
+    const form = new FormData();
+    form.append('file', f);
+    const res = await fetch('/upload', { method: 'POST', body: form });
+    const json = await res.json();
+    if (json.success) {
+      socket.emit('newMessage', { from:'warden', type:'file', url: json.url, filename: f.name });
+      status('File sent');
+    } else status('Upload failed');
+    fileUpload.value = '';
+  });
+
+  // CAMERA snapshot
+  const cameraBtn = document.getElementById('cameraBtn');
+  const cameraPreview = document.getElementById('cameraPreview');
+  const cameraCanvas = document.getElementById('cameraCanvas');
+  let stream = null;
+  cameraBtn.addEventListener('click', async () => {
+    if (!stream) {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        cameraPreview.srcObject = stream;
+        cameraPreview.style.display = 'block';
+        cameraPreview.width = 320;
+        cameraPreview.height = 240;
+        cameraBtn.textContent = '📸 Capture';
+        return;
+      } catch (err) {
+        alert('Camera access denied or not available.');
+        return;
+      }
+    } else {
+      // capture
+      cameraCanvas.width = cameraPreview.videoWidth || 320;
+      cameraCanvas.height = cameraPreview.videoHeight || 240;
+      const ctx = cameraCanvas.getContext('2d');
+      ctx.drawImage(cameraPreview, 0, 0, cameraCanvas.width, cameraCanvas.height);
+      cameraPreview.style.display = 'none';
+      // create blob
+      cameraCanvas.toBlob(async (blob) => {
+        const form = new FormData();
+        form.append('file', blob, 'capture.png');
+        status('Uploading capture...');
+        const res = await fetch('/upload', { method: 'POST', body: form });
+        const json = await res.json();
+        if (json.success) {
+          socket.emit('newMessage', { from:'warden', type:'image', url: json.url, filename: json.filename });
+          status('Photo sent');
+        } else status('Upload failed');
+      }, 'image/png');
+      // stop stream
+      stream.getTracks().forEach(t => t.stop());
+      stream = null;
+      cameraBtn.textContent = '📸';
+    }
+  });
+
+  // VOICE RECORDING using MediaRecorder
+  let mediaRecorder = null, audioChunks = [];
+  const recordBtn = document.getElementById('recordBtn');
+  recordBtn.addEventListener('click', async () => {
+    if (!mediaRecorder || mediaRecorder.state === 'inactive') {
+      try {
+        const micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mediaRecorder = new MediaRecorder(micStream);
+        audioChunks = [];
+        mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+        mediaRecorder.onstop = async () => {
+          const blob = new Blob(audioChunks, { type: 'audio/webm' });
+          const form = new FormData();
+          form.append('file', blob, 'voice.webm');
+          status('Uploading voice...');
+          const res = await fetch('/upload', { method: 'POST', body: form });
+          const json = await res.json();
+          if (json.success) {
+            socket.emit('newMessage', { from:'warden', type:'audio', url: json.url, filename: json.filename });
+            status('Voice message sent');
+          } else status('Upload failed');
+          micStream.getTracks().forEach(t => t.stop());
+        };
+        mediaRecorder.start();
+        recordBtn.textContent = '⏺️ Recording... Click again to stop';
+        status('Recording...');
+      } catch (err) {
+        alert('Microphone access denied or not available.');
+      }
+    } else if (mediaRecorder.state === 'recording') {
+      mediaRecorder.stop();
+      recordBtn.textContent = '🎤';
+    }
+  });
+
+  // small helpers
+  function status(txt) { statusEl.textContent = txt; setTimeout(()=> { statusEl.textContent = '' }, 4000); }
+  function formatTime(t){ const d = new Date(t); return d.toLocaleString(); }
+  function escapeHtml(s){ if(!s) return ''; return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+  // auto-scroll & keep latest
+  // already handled after pushMessage
+</script>
+</body>
+</html>

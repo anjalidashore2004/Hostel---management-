@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Warden Room View</title>
+<style>
+  body {
+    font-family: Arial, sans-serif;
+    margin: 0;
+    color: black;
+    position: relative;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+  /* Background image with light blur */
+  body::before {
+    content: "";
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: url("HS5.jpg") no-repeat center center/cover;
+    filter: blur(5px);
+    z-index: -1;
+  }
+
+  h2 {
+    text-align: center;
+    color: #fff;
+    background: rgba(0, 123, 255, 0.8);
+    padding: 10px;
+    border-radius: 10px;
+    margin: 20px auto;
+    width: fit-content;
+  }
+
+  .controls {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+    margin-bottom: 15px;
+    flex-wrap: wrap;
+  }
+
+  .search-box {
+    width: 100%;
+    max-width: 420px;
+    padding: 8px;
+    border-radius: 6px;
+    border: 1px solid #ccc;
+    font-size: 16px;
+  }
+
+  .export-btn {
+    background: #28a745;
+    color: #fff;
+    border: none;
+    padding: 8px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+  }
+
+  table {
+    width: 95%;
+    margin: auto;
+    border-collapse: collapse;
+    background: rgba(255, 255, 255, 0.95);
+    box-shadow: 0 0 6px rgba(0,0,0,0.1);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+
+  th, td {
+    border: 1px solid #ddd;
+    padding: 8px;
+    text-align: center;
+    vertical-align: top;
+    color: black;
+  }
+
+  th {
+    background: #007BFF;
+    color: white;
+  }
+
+  tr:hover {
+    background: rgba(0, 123, 255, 0.1);
+  }
+
+  .delete-btn {
+    background: #d9534f;
+    color: #fff;
+    border: none;
+    padding: 6px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+
+  @media (max-width: 800px) {
+    th, td { font-size: 13px; padding: 6px; }
+  }
+</style>
+</head>
+<body>
+
+<h2>🏠 Allotted Rooms - Warden View</h2>
+
+<div class="controls">
+  <input id="searchInput" class="search-box" placeholder="Search by Room No or Student Name..." />
+  <button class="export-btn" onclick="exportCSV()">Export CSV</button>
+</div>
+
+<table id="roomsTable">
+  <thead>
+    <tr>
+      <th>Room No</th>
+      <th>Students</th>
+      <th>Parents</th>
+      <th>Mobiles</th>
+      <th>Colleges</th>
+      <th>Assets</th>
+      <th>Actions</th>
+    </tr>
+  </thead>
+  <tbody></tbody>
+</table>
+
+<script>
+let allRooms = [];
+
+async function loadRooms() {
+  try {
+    const res = await fetch('/all-rooms');
+    allRooms = await res.json();
+    renderTable(allRooms);
+  } catch (e) {
+    console.error('Error fetching rooms', e);
+    alert('Error loading rooms. Check server.');
+  }
+}
+
+function renderTable(list) {
+  const tbody = document.querySelector('#roomsTable tbody');
+  tbody.innerHTML = '';
+  list.forEach((room, index) => {
+    const students = [], parents = [], mobiles = [], colleges = [];
+    for (let i = 1; i <= 5; i++) {
+      const s = (room[`studentName${i}`] || '').trim();
+      if (s) {
+        students.push(`${i}. ${s}`);
+        parents.push(`${i}. ${(room[`parentName${i}`] || '-').trim()}`);
+        mobiles.push(`${i}. ${(room[`studentMobile${i}`] || '-').trim()}`);
+        colleges.push(`${i}. ${(room[`collegeName${i}`] || '-').trim()}`);
+      }
+    }
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${room.roomNumber || '-'}</td>
+      <td style="text-align:left">${students.join('<br>')}</td>
+      <td style="text-align:left">${parents.join('<br>')}</td>
+      <td style="text-align:left">${mobiles.join('<br>')}</td>
+      <td style="text-align:left">${colleges.join('<br>')}</td>
+      <td style="text-align:left">
+        Chairs: ${room.chairs || 0}<br>
+        Tables: ${room.tables || 0}<br>
+        Beds: ${room.beds || 0}<br>
+        Fans: ${room.fans || 0}
+      </td>
+      <td><button class="delete-btn" onclick="deleteRoom(${index})">Delete</button></td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+async function deleteRoom(index) {
+  if (!confirm('Are you sure to delete this room entry?')) return;
+  const res = await fetch(`/delete-room/${index}`, { method: 'DELETE' });
+  if (res.ok) {
+    alert('Deleted ✅');
+    await loadRooms();
+  } else {
+    alert('Error deleting');
+  }
+}
+
+document.getElementById('searchInput').addEventListener('input', function(){
+  const kw = this.value.trim().toLowerCase();
+  if (!kw) { renderTable(allRooms); return; }
+  const filtered = allRooms.filter(room => {
+    const roomMatch = (room.roomNumber || '').toLowerCase().includes(kw);
+    const studentMatch = [1,2,3,4,5].some(i => (room[`studentName${i}`] || '').toLowerCase().includes(kw));
+    return roomMatch || studentMatch;
+  });
+  renderTable(filtered);
+});
+
+function exportCSV() {
+  if (!allRooms.length) { alert('No data to export'); return; }
+  const rows = [['RoomNo','StudentNo','StudentName','Parent','Mobile','College','Chairs','Tables','Beds','Fans']];
+  allRooms.forEach(room => {
+    for (let i=1;i<=5;i++){
+      const s = (room[`studentName${i}`] || '').trim();
+      if (!s) continue;
+      rows.push([
+        room.roomNumber || '',
+        i,
+        s,
+        room[`parentName${i}`] || '',
+        room[`studentMobile${i}`] || '',
+        room[`collegeName${i}`] || '',
+        room.chairs || '',
+        room.tables || '',
+        room.beds || '',
+        room.fans || ''
+      ]);
+    }
+  });
+  const csv = rows.map(r => r.map(cell => `"${String(cell).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'rooms_export.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+loadRooms();
+</script>
+</body>
+</html>
